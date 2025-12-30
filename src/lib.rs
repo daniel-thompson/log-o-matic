@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+
 use base64::Engine;
 
 #[derive(Clone, Copy, Debug)]
@@ -112,6 +114,43 @@ impl Flame {
             },
             flame_speed: 60,
         }
+    }
+
+    /// Use "real world" parameters to dynamically configure the fire.
+    ///
+    /// The three parameters, each expressed as a percent, represent the
+    /// temperature of the fuel bed, the fuel level and whether the fire is
+    /// being allowed to draw in air (to control the burn rate).
+    pub fn summon_fire(bed_temp: u8, fuel_level: u8, draw: u8) -> Self {
+        let mut flame = Flame::new();
+
+        let bed_temp = min(bed_temp as u32, 100);
+        let fuel_level = min(fuel_level as u32, 100);
+        let draw = min(draw as u32, 100);
+
+        // main flame brightness is controlled by draw and fuel level
+        flame.main_flame.brightness = ((2 * fuel_level + 3 * draw) / 5) as u8;
+        // flame speed is entirely controlled by the draw
+        flame.flame_speed = max(draw as u8 / 2, 1);
+        // TODO: quantize for least noise
+
+        // flame palette brightness is controlled by draw and fuel level
+        flame.flame_palette.brightness = ((3 * fuel_level + 2 * draw) / 5) as u8;
+
+        // fuel bed is controlled by age and draw
+        flame.fuel_bed.brightness = ((bed_temp / 5) + (bed_temp * draw) / 180) as u8;
+
+        // glowing logs are controlled by age and draw (but more age)
+        flame.glowing_logs.brightness = ((bed_temp / 2) + (bed_temp * draw) / 200) as u8;
+
+        // down light is controlled by the brightness of the rest of the fire
+        flame.down_light.brightness = ((flame.main_flame.brightness as u32
+            + flame.main_flame.brightness as u32
+            + 2 * flame.fuel_bed.brightness as u32)
+            / 4) as u8;
+
+        //dbg!(&flame);
+        flame
     }
 
     pub fn to_base64(&self) -> String {
