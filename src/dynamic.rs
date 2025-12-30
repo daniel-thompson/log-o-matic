@@ -1,4 +1,4 @@
-use std::{error::Error, net::IpAddr, thread, time::Duration};
+use std::{cmp::min, error::Error, net::IpAddr, thread, time::Duration};
 
 use chrono::Timelike;
 use clap::Parser;
@@ -6,35 +6,14 @@ use log_o_matic::*;
 use rust_tuyapi::{Payload, TuyaDevice};
 
 #[derive(Debug, Parser)]
-pub struct Command {}
+pub struct Command {
+    /// Show how the fire would be managed
+    #[arg(long)]
+    dry_run: bool,
 
-fn fire(age: u16, fuel_level: u8, draw: u8) -> Flame {
-    let mut flame = Flame::new();
-
-    // main flame brightness is controlled by draw and fuel level
-    flame.main_flame.brightness = ((2 * fuel_level as u32 + 3 * draw as u32) / 5) as u8;
-    // flame speed is entirely controlled by the draw
-    flame.flame_speed = draw / 2;
-    // TODO: quantize for least noise
-
-    // flame palette brightness is controlled by draw and fuel level
-    flame.flame_palette.brightness = ((3 * fuel_level as u32 + 2 * draw as u32) / 5) as u8;
-
-    // fuel bed is controlled by age and draw
-    let age_level = if age > 50 { 100 } else { age as u32 * 2 };
-    flame.fuel_bed.brightness = ((age_level / 5) + (age_level * draw as u32) / 180) as u8;
-
-    // glowing logs are controlled by age and draw (but more age)
-    flame.glowing_logs.brightness = ((age_level / 2) + (age_level * draw as u32) / 200) as u8;
-
-    // down light is controlled by the brightness of the rest of the fire
-    flame.down_light.brightness = ((flame.main_flame.brightness as u32
-        + flame.main_flame.brightness as u32
-        + 2 * flame.fuel_bed.brightness as u32)
-        / 4) as u8;
-
-    //dbg!(&flame);
-    flame
+    /// Specify how long (in minutes) the fire has been lit for
+    #[arg(long, default_value_t = 0)]
+    age: i64,
 }
 
 fn update_avanti(ip_addr: IpAddr, local_key: &str, flame: &Flame) -> Result<(), Box<dyn Error>> {
@@ -50,18 +29,23 @@ fn update_avanti(ip_addr: IpAddr, local_key: &str, flame: &Flame) -> Result<(), 
     Ok(())
 }
 
-pub fn main(ip_addr: IpAddr, local_key: &str, _args: Command) -> Result<(), Box<dyn Error>> {
+pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<dyn Error>> {
     let start = chrono::Local::now();
     let bed_time = chrono::NaiveTime::from_hms_opt(22, 45, 0).unwrap();
+    let mut now = chrono::Local::now();
 
     loop {
-        let now = chrono::Local::now();
+        if args.dry_run {
+            now += chrono::Duration::minutes(2);
+        } else {
+            now = chrono::Local::now();
+        }
         let target_today = now
             .date_naive()
             .and_time(bed_time)
             .and_local_timezone(chrono::Local)
             .unwrap();
-        let age = now.signed_duration_since(start).num_minutes();
+        let age = now.signed_duration_since(start).num_minutes() + args.age;
         let remaining = target_today.signed_duration_since(now).num_minutes();
         let offset = now.minute();
 
@@ -72,6 +56,10 @@ pub fn main(ip_addr: IpAddr, local_key: &str, _args: Command) -> Result<(), Box<
             time_since_log += 60;
         }
 
+        if remaining <= -50 {
+            break;
+        }
+
         let fuel_level: u8 = if time_since_log > 99 {
             1
         } else {
@@ -80,26 +68,30 @@ pub fn main(ip_addr: IpAddr, local_key: &str, _args: Command) -> Result<(), Box<
         let draw = if age < 50 {
             50
         } else if remaining < 30 {
-            10
+            1
         } else {
             33
         };
 
+        let bed_temp = if remaining >= 0 {
+            min(age * 2, 100)
+        } else {
+            ((remaining + 50) * 2)
+        } as u8;
+
         println!(
-            "{}: age {}  fuel_level {}  draw {}  remaining {}  time_since_log {}",
-            now, age, fuel_level, draw, remaining, time_since_log
+            "{}: bed_temp {}  fuel_level {}  draw {}  age {}  remaining {}  time_since_log {}",
+            now, bed_temp, fuel_level, draw, age, remaining, time_since_log
         );
 
-        let flame = fire(age as u16, fuel_level, draw);
+        let flame = Flame::summon_fire(min(age * 2, 100) as u8, fuel_level, draw);
 
-        let e = update_avanti(ip_addr, local_key, &flame);
-        match e {
-            Ok(_) => thread::sleep(Duration::from_secs(120)),
-            Err(e) => println!("{e}"),
-        };
-
-        if remaining <= 0 {
-            break;
+        if !args.dry_run {
+            let e = update_avanti(ip_addr, local_key, &flame);
+            match e {
+                Ok(_) => thread::sleep(Duration::from_secs(120)),
+                Err(e) => println!("{e}"),
+            };
         }
     }
 
