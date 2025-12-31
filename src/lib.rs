@@ -137,10 +137,10 @@ impl Flame {
         // flame palette brightness is controlled by draw and fuel level
         flame.flame_palette.brightness = ((3 * fuel_level + 2 * draw) / 5) as u8;
 
-        // fuel bed is controlled by age and draw
+        // fuel bed is controlled by bed temp and draw
         flame.fuel_bed.brightness = ((bed_temp / 5) + (bed_temp * draw) / 180) as u8;
 
-        // glowing logs are controlled by age and draw (but more age)
+        // glowing logs are controlled by bed temp and draw (but more bed temp)
         flame.glowing_logs.brightness = ((bed_temp / 2) + (bed_temp * draw) / 200) as u8;
 
         // down light is controlled by the brightness of the rest of the fire
@@ -148,6 +148,11 @@ impl Flame {
             + flame.main_flame.brightness as u32
             + 2 * flame.fuel_bed.brightness as u32)
             / 4) as u8;
+
+        // The fuel bed is generally too bright (but right now I don't want to
+        // change the downlight settings to let's just post-process to dim the
+        // bed a little).
+        flame.fuel_bed.brightness = (((flame.fuel_bed.brightness as u32) * 2) / 3) as u8;
 
         //dbg!(&flame);
         flame

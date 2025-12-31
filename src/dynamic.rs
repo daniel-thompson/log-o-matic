@@ -1,4 +1,10 @@
-use std::{cmp::min, error::Error, net::IpAddr, thread, time::Duration};
+use std::{
+    cmp::{max, min},
+    error::Error,
+    net::IpAddr,
+    thread,
+    time::Duration,
+};
 
 use chrono::Timelike;
 use clap::Parser;
@@ -30,7 +36,7 @@ fn update_avanti(ip_addr: IpAddr, local_key: &str, flame: &Flame) -> Result<(), 
 }
 
 pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<dyn Error>> {
-    let start = chrono::Local::now();
+    let start = chrono::Local::now() - chrono::Duration::minutes(args.age);
     let bed_time = chrono::NaiveTime::from_hms_opt(22, 45, 0).unwrap();
     let mut now = chrono::Local::now();
 
@@ -45,26 +51,34 @@ pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<d
             .and_time(bed_time)
             .and_local_timezone(chrono::Local)
             .unwrap();
-        let age = now.signed_duration_since(start).num_minutes() + args.age;
+        let age = now.signed_duration_since(start).num_minutes();
         let remaining = target_today.signed_duration_since(now).num_minutes();
         let offset = now.minute();
 
         let mut time_since_log = std::cmp::min(age, offset as i64);
         // TODO: this doesn't work... we need the threshold to be the minutes
         //       value for "bed time"
-        if remaining < 60 {
-            time_since_log += 60;
-        }
 
         if remaining <= -50 {
             break;
         }
 
-        let fuel_level: u8 = if time_since_log > 99 {
-            1
+        let bed_temp = if remaining >= 0 {
+            min(age * 2, 100)
         } else {
-            100 - time_since_log as u8
-        };
+            (remaining + 50) * 2
+        } as u8;
+
+        let fuel_level = max(
+            1,
+            if remaining <= 60 {
+                // Let's bank up the fire an hour before we want it to die down
+                (remaining * 3) / 2
+            } else {
+                100 - ((time_since_log * 3) / 2)
+            },
+        ) as u8;
+
         let draw = if age < 50 {
             50
         } else if remaining < 30 {
@@ -73,14 +87,8 @@ pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<d
             33
         };
 
-        let bed_temp = if remaining >= 0 {
-            min(age * 2, 100)
-        } else {
-            ((remaining + 50) * 2)
-        } as u8;
-
         println!(
-            "{}: bed_temp {}  fuel_level {}  draw {}  age {}  remaining {}  time_since_log {}",
+            "{}: bed_temp {:3}  fuel_level {:3}  draw {:3}  age {:3}  remaining {:3}  time_since_log {:3}",
             now, bed_temp, fuel_level, draw, age, remaining, time_since_log
         );
 
