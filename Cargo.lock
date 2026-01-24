@@ -350,6 +350,7 @@ dependencies = [
  "env_logger",
  "log",
  "rust-tuyapi",
+ "serde",
  "serde_json",
 ]
 

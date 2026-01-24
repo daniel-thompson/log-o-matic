@@ -125,10 +125,15 @@ pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<d
             33
         };
 
-        println!(
-            "{}: bed_temp {:3}  fuel_level {:3}  draw {:3}  age {:3}  remaining {:3}  time_since_log {:3}",
-            now, bed_temp, fuel_level, draw, age, remaining, time_since_log
+        let msg = format!(
+            "bed_temp {:3}  fuel_level {:3}  draw {:3}  age {:3}  remaining {:3}  time_since_log {:3}",
+            bed_temp, fuel_level, draw, age, remaining, time_since_log
         );
+        if args.dry_run {
+            println!("{now}: {msg}");
+        } else {
+            log::info!("{msg}");
+        }
 
         let flame = Flame::summon_fire(min(age * 2, 100) as u8, fuel_level, draw);
 
