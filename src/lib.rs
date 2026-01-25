@@ -109,7 +109,7 @@ impl Flame {
             down_light: SecondaryLedString {
                 on: true,
                 sync: false,
-                color: Color::Red,
+                color: Color::Orange,
                 brightness: 100,
             },
             flame_speed: 60,
