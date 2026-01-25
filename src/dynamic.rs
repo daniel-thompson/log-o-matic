@@ -155,5 +155,16 @@ pub fn main(ip_addr: IpAddr, local_key: &str, args: Command) -> Result<(), Box<d
         now = then;
     }
 
+    // At this point it's 50 minutes past bed time and the fire is very
+    // nearly out. Let's re-light the fire after two hours ready for the
+    // next day.
+    //
+    // This give a better flame if the fire is turned on during the day
+    // using the remote.
+    if !args.dry_run {
+        thread::sleep(std::time::Duration::from_secs(70 * 60));
+        let _ = update_avanti(ip_addr, local_key, &Flame::summon_fire(100, 100, 33));
+    }
+
     Ok(())
 }
